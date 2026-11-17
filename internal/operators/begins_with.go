@@ -37,9 +37,7 @@ type beginsWith struct {
 var _ plugintypes.Operator = (*beginsWith)(nil)
 
 func newBeginsWith(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
-	data := options.Arguments
-
-	m, err := macro.NewMacro(data)
+	m, err := newMacroAllowEmpty(options.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +45,7 @@ func newBeginsWith(options plugintypes.OperatorOptions) (plugintypes.Operator, e
 }
 
 func (o *beginsWith) Evaluate(tx plugintypes.TransactionState, value string) bool {
-	data := o.data.Expand(tx)
-	return strings.HasPrefix(value, data)
+	return strings.HasPrefix(value, expandMacro(tx, o.data))
 }
 
 func init() {

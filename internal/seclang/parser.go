@@ -210,7 +210,7 @@ func (p *Parser) evaluateLine(l string) error {
 	}
 
 	if err := d(p.options); err != nil {
-		return fmt.Errorf("failed to compile the directive %q: %w", directive, err)
+		return fmt.Errorf("failed to compile the directive %q at line %d: %w", directive, p.currentLine, err)
 	}
 
 	return nil

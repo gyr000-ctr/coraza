@@ -18,6 +18,18 @@
 // SecRule REQUEST_LINE "!@beginsWith GET" "id:101,deny"
 // ```
 //
+// # Available operators
+//
+// Matching: beginsWith, contains, containsWord, detectSQLi, detectXSS,
+// endsWith, geoLookup, inspectFile, ipMatch, ipMatchFromDataset, ipMatchFromFile
+// (alias ipMatchF), noMatch, pm, pmFromDataset, pmFromFile (alias pmf), rbl,
+// restpath, rx, streq, strmatch, unconditionalMatch, within.
+//
+// Comparison: eq, ge, gt, le, lt.
+//
+// Validation: validateByteRange, validateHash, validateNid, validateSchema,
+// validateUrlEncoding, validateUtf8Encoding, verifyCC.
+//
 // For the complete list of available operators, see: https://coraza.io/docs/seclang/operators/
 package operators
 
@@ -28,10 +40,31 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/corazawaf/coraza/v3/experimental/plugins/macro"
 	"github.com/corazawaf/coraza/v3/experimental/plugins/plugintypes"
 )
 
 var operators = map[string]plugintypes.OperatorFactory{}
+
+// newMacroAllowEmpty is like macro.NewMacro but returns a nil Macro for an
+// empty argument instead of an error. ModSecurity accepts an empty parameter
+// for the string-matching operators, and a nil Macro expands to the empty
+// string via expandMacro.
+func newMacroAllowEmpty(data string) (macro.Macro, error) {
+	if data == "" {
+		return nil, nil
+	}
+	return macro.NewMacro(data)
+}
+
+// expandMacro expands m, mapping a nil Macro (empty parameter) to the empty
+// string.
+func expandMacro(tx plugintypes.TransactionState, m macro.Macro) string {
+	if m == nil {
+		return ""
+	}
+	return m.Expand(tx)
+}
 
 func memoizeDo(m plugintypes.Memoizer, key string, fn func() (any, error)) (any, error) {
 	if m != nil {

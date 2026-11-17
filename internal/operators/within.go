@@ -36,9 +36,7 @@ type within struct {
 }
 
 func newWithin(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
-	data := options.Arguments
-
-	m, err := macro.NewMacro(data)
+	m, err := newMacroAllowEmpty(options.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +44,7 @@ func newWithin(options plugintypes.OperatorOptions) (plugintypes.Operator, error
 }
 
 func (o *within) Evaluate(tx plugintypes.TransactionState, value string) bool {
-	data := o.data.Expand(tx)
-	return strings.Contains(data, value)
+	return strings.Contains(expandMacro(tx, o.data), value)
 }
 
 func init() {

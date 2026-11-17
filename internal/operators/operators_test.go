@@ -109,8 +109,6 @@ func TestOperators(t *testing.T) {
 	}
 
 	notImplemented := []string{
-		"containsWord",
-		"verifyCC",
 		"verifycpf",
 		"verifyssn",
 		"verifysvnr",
@@ -125,7 +123,7 @@ func TestOperators(t *testing.T) {
 	for _, f := range files {
 		cases := unmarshalTests(t, f)
 		for _, data := range cases {
-			if utils.InSlice("containsWord", notImplemented) {
+			if utils.InSlice(data.Name, notImplemented) {
 				continue
 			}
 			for capName, capVal := range captureMatrix {
@@ -182,8 +180,14 @@ func TestOperators(t *testing.T) {
 func unmarshalTests(t *testing.T, json []byte) []Test {
 	t.Helper()
 	var tests []Test
-	v := gjson.ParseBytes(json).Value()
-	for _, in := range v.([]any) {
+	v := gjson.ParseBytes(json)
+	if !v.IsArray() {
+		// The walk picks up every .json under testdata, including resources
+		// consumed by the cases themselves (e.g. schema.json, referenced by
+		// the validateSchema cases). Only arrays are test case files.
+		return nil
+	}
+	for _, in := range v.Value().([]any) {
 		obj := in.(map[string]any)
 		t := Test{}
 		if s, ok := obj["input"]; ok {

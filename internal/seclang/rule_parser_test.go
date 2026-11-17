@@ -582,3 +582,67 @@ func BenchmarkParseActions(b *testing.B) {
 		_, _ = parseActions(nil, actionsToBeParsed)
 	}
 }
+
+// TestOperatorArgumentErrors asserts that invalid operator arguments fail at
+// load time with an error naming the operator and carrying the line of the
+// offending rule, so a failing ruleset load can be traced back to its source
+// line. Parse errors live here rather than in a profile per the layer map.
+func TestOperatorArgumentErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		rules    string
+		wantErrs []string
+	}{
+		{
+			name:     "validateHash without argument",
+			rules:    `SecRule ARGS "@validateHash" "id:1,phase:1,pass"`,
+			wantErrs: []string{"validateHash", "missing", "at line 1"},
+		},
+		{
+			name:     "validateHash with unknown algorithm",
+			rules:    `SecRule ARGS "@validateHash crc32" "id:1,phase:1,pass"`,
+			wantErrs: []string{"validateHash", "crc32", "at line 1"},
+		},
+		{
+			name:     "verifyCC without argument",
+			rules:    `SecRule ARGS "@verifyCC" "id:1,phase:1,pass"`,
+			wantErrs: []string{"verifyCC", "missing", "at line 1"},
+		},
+		{
+			name:     "verifyCC with invalid regular expression",
+			rules:    `SecRule ARGS "@verifyCC ([" "id:1,phase:1,pass"`,
+			wantErrs: []string{"verifyCC", "at line 1"},
+		},
+		{
+			name: "error reports the line of the failing rule",
+			rules: `SecRule ARGS "@rx ok" "id:1,phase:1,pass"
+
+SecRule ARGS "@validateHash" "id:2,phase:1,pass"`,
+			wantErrs: []string{"at line 3"},
+		},
+		{
+			name:  "containsWord without argument is valid",
+			rules: `SecRule ARGS "@containsWord" "id:1,phase:1,pass"`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			waf := corazawaf.NewWAF()
+			err := NewParser(waf).FromString(tc.rules)
+			if len(tc.wantErrs) == 0 {
+				if err != nil {
+					t.Fatalf("unexpected error: %s", err.Error())
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %v", tc.wantErrs)
+			}
+			for _, want := range tc.wantErrs {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected error containing %q, got %q", want, err.Error())
+				}
+			}
+		})
+	}
+}

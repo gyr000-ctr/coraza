@@ -42,7 +42,8 @@ func TestNidCl(t *testing.T) {
 }
 
 // TestNidUs is a table test of the pure nidUs check; the JSON fixtures in
-// testdata are not a usable home because TestOperators skips every case.
+// testdata cover the operator through TestOperators, this table covers the
+// country-specific function directly.
 func TestNidUs(t *testing.T) {
 	tests := []struct {
 		name string

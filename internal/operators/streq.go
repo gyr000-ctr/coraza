@@ -33,9 +33,7 @@ type streq struct {
 }
 
 func newStrEq(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
-	data := options.Arguments
-
-	m, err := macro.NewMacro(data)
+	m, err := newMacroAllowEmpty(options.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +41,7 @@ func newStrEq(options plugintypes.OperatorOptions) (plugintypes.Operator, error)
 }
 
 func (o *streq) Evaluate(tx plugintypes.TransactionState, value string) bool {
-	data := o.data.Expand(tx)
-	return data == value
+	return expandMacro(tx, o.data) == value
 }
 
 func init() {

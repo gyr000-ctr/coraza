@@ -1379,3 +1379,111 @@ func TestRuleEvaluationDoesNotLogBuiltinTAction(t *testing.T) {
 		t.Errorf("expected debug logs NOT to contain action=\"t\", got:\n%s", logs)
 	}
 }
+
+// TestWordHashCCOperatorsPipeline exercises the containsWord, validateHash and
+// verifyCC operators through the full evaluation pipeline: transformations,
+// chained rules, count variables and match logging.
+func TestWordHashCCOperatorsPipeline(t *testing.T) {
+	t.Run("containsWord matches after transformations on word boundaries", func(t *testing.T) {
+		waf := corazawaf.NewWAF()
+		err := NewParser(waf).FromString(`
+			SecRuleEngine On
+			SecRule ARGS:cmd "@containsWord admin" "id:1,phase:1,deny,status:403,t:lowercase"
+		`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tx := waf.NewTransaction()
+		tx.AddGetRequestArgument("cmd", "ADMIN")
+		it := tx.ProcessRequestHeaders()
+		if it == nil {
+			t.Fatal("expected interruption for ADMIN after t:lowercase")
+		}
+		if it.Status != 403 {
+			t.Errorf("expected status 403, got %d", it.Status)
+		}
+
+		// "administrator" contains "admin" but not on a word boundary.
+		tx = waf.NewTransaction()
+		tx.AddGetRequestArgument("cmd", "ADMINISTRATOR")
+		if it := tx.ProcessRequestHeaders(); it != nil {
+			t.Errorf("unexpected interruption for ADMINISTRATOR: %+v", it)
+		}
+	})
+
+	t.Run("verifyCC matches inside a chain", func(t *testing.T) {
+		waf := corazawaf.NewWAF()
+		err := NewParser(waf).FromString(`
+			SecRuleEngine On
+			SecRule ARGS:cc "@verifyCC (?:^|[^\d])(\d+)(?:[^\d]|$)" "id:2,phase:1,deny,status:403,chain"
+				SecRule REQUEST_METHOD "@streq POST"
+		`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tx := waf.NewTransaction()
+		tx.ProcessURI("/?cc=4539501231827691", "POST", "HTTP/1.1")
+		if it := tx.ProcessRequestHeaders(); it == nil {
+			t.Error("expected interruption for a Luhn-valid card number in a POST")
+		}
+
+		// Same payload over GET: the chained REQUEST_METHOD rule does not match.
+		tx = waf.NewTransaction()
+		tx.ProcessURI("/?cc=4539501231827691", "GET", "HTTP/1.1")
+		if it := tx.ProcessRequestHeaders(); it != nil {
+			t.Errorf("unexpected interruption for GET: %+v", it)
+		}
+
+		// A number failing the Luhn check does not match.
+		tx = waf.NewTransaction()
+		tx.ProcessURI("/?cc=4539501231827690", "POST", "HTTP/1.1")
+		if it := tx.ProcessRequestHeaders(); it != nil {
+			t.Errorf("unexpected interruption for Luhn-invalid number: %+v", it)
+		}
+	})
+
+	t.Run("validateHash with count variable and match logging", func(t *testing.T) {
+		waf := corazawaf.NewWAF()
+		var logs []string
+		waf.SetErrorCallback(func(mr types.MatchedRule) {
+			logs = append(logs, mr.ErrorLog())
+		})
+		err := NewParser(waf).FromString(`
+			SecRuleEngine On
+			SecRule &ARGS "@eq 2" "id:3,phase:1,pass,log"
+			SecRule ARGS:token "@validateHash sha1" "id:4,phase:1,pass,log"
+		`)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tx := waf.NewTransaction()
+		tx.AddGetRequestArgument("a", "1")
+		tx.AddGetRequestArgument("token", "da39a3ee5e6b4b0d3255bfef95601890afd80709")
+		tx.ProcessRequestHeaders()
+		if len(tx.MatchedRules()) != 2 {
+			t.Errorf("expected 2 matched rules, got %d", len(tx.MatchedRules()))
+		}
+		if len(logs) != 2 {
+			t.Fatalf("expected 2 log lines, got %d", len(logs))
+		}
+		if !strings.Contains(logs[0], `[id "3"]`) {
+			t.Errorf("expected log for rule 3, got %q", logs[0])
+		}
+		if !strings.Contains(logs[1], `[id "4"]`) {
+			t.Errorf("expected log for rule 4, got %q", logs[1])
+		}
+
+		// A token that is not a 40-char hex digest does not match.
+		logs = nil
+		tx = waf.NewTransaction()
+		tx.AddGetRequestArgument("a", "1")
+		tx.AddGetRequestArgument("token", "not-a-hash")
+		tx.ProcessRequestHeaders()
+		if len(tx.MatchedRules()) != 1 {
+			t.Errorf("expected only the count rule to match, got %d matches", len(tx.MatchedRules()))
+		}
+	})
+}

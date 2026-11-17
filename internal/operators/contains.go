@@ -37,9 +37,7 @@ type contains struct {
 var _ plugintypes.Operator = (*contains)(nil)
 
 func newContains(options plugintypes.OperatorOptions) (plugintypes.Operator, error) {
-	data := options.Arguments
-
-	m, err := macro.NewMacro(data)
+	m, err := newMacroAllowEmpty(options.Arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +45,7 @@ func newContains(options plugintypes.OperatorOptions) (plugintypes.Operator, err
 }
 
 func (o *contains) Evaluate(tx plugintypes.TransactionState, value string) bool {
-	data := o.data.Expand(tx)
-	return strings.Contains(value, data)
+	return strings.Contains(value, expandMacro(tx, o.data))
 }
 
 func init() {
